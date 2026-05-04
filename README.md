@@ -2,6 +2,8 @@
 
 A beautiful, modern web-based server management dashboard for monitoring and controlling multiple development servers.
 
+![TOGGLR Screenshot](screenshot.png)
+
 ## 📋 Overview
 
 TOGGLR is a real-time server monitoring and management tool that provides a sleek interface to:
