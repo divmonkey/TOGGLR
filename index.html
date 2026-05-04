@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOGGLR — Server Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { fontFamily: {
+                heading: ['"Space Grotesk"', 'sans-serif'],
+                body: ['"DM Sans"', 'sans-serif'],
+            }}}
+        }
+    </script>
+    <style>
+        :root {
+            --bg:#070a1a;--surface:#0d1130;--surface-hover:#131845;
+            --border:#1c2055;--border-subtle:#151a42;
+            --text:#e8e8f0;--text-secondary:#8888aa;--text-muted:#4a4a6a;
+            --online:#22c55e;--offline:#3a3a5c;--killing:#f59e0b;
+            --danger:#ef4444;--accent:#c084fc;--gpu-color:#38bdf8;
+        }
+        *{box-sizing:border-box;margin:0;padding:0}
+        body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+        body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 50% at 85% 10%,rgba(255,255,255,0.08),transparent),radial-gradient(ellipse 80% 70% at 15% 90%,rgba(0,0,0,0.5),transparent),linear-gradient(145deg,#0a1035 0%,#0d0a2e 35%,#1a0a3a 65%,#120830 100%);pointer-events:none;z-index:0}
+        body::after{content:'';position:fixed;inset:0;opacity:0.035;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:128px 128px;pointer-events:none;z-index:0}
+        .app-container{position:relative;z-index:1}
+        #listContainer{background:rgba(13,17,48,0.55);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(28,32,85,0.6)}
+        .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:all .4s ease}
+        .status-dot.online{background:var(--online);box-shadow:0 0 8px rgba(34,197,94,0.4);animation:po 2.5s ease-in-out infinite}
+        .status-dot.offline{background:var(--offline)}
+        .status-dot.killing{background:var(--killing);box-shadow:0 0 8px rgba(245,158,11,0.5);animation:pf .4s ease-in-out infinite}
+        .status-dot.starting{background:var(--accent);box-shadow:0 0 8px rgba(192,132,252,0.5);animation:pf .6s ease-in-out infinite}
+        @keyframes po{0%,100%{box-shadow:0 0 6px rgba(34,197,94,0.3)}50%{box-shadow:0 0 14px rgba(34,197,94,0.55)}}
+        @keyframes pf{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+        .server-row{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid rgba(21,26,66,0.7);transition:background .2s ease,border-color .4s ease,opacity .4s ease;position:relative}
+        .server-row:last-child{border-bottom:none}
+        .server-row:hover{background:rgba(19,24,69,0.5)}
+        .server-row.offline-row{opacity:.5}.server-row.offline-row:hover{opacity:.7}
+        .server-row.killing-row{border-left:3px solid var(--killing);padding-left:17px}
+        .server-row.killing-row .meta-value{opacity:.4}
+        .server-row.starting-row{border-left:3px solid var(--accent);padding-left:17px}
+        .inline-panel{border-radius:8px;padding:10px 14px;margin-top:8px;animation:pi .25s ease-out}
+        @keyframes pi{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+        .error-panel{background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15)}
+        .ep-title{font-family:'Space Grotesk',monospace;font-size:12px;color:var(--danger);font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+        .ep-msg{font-family:'Space Grotesk',monospace;font-size:11px;color:#cc7777;line-height:1.5;margin-bottom:6px}
+        .ep-solution{font-size:11px;color:var(--text-secondary);line-height:1.5;padding-top:6px;border-top:1px solid rgba(239,68,68,0.1)}
+        .ep-solution strong{color:#99aaaa;font-weight:600}
+        .lock-panel{background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15)}
+        .lp-title{font-family:'Space Grotesk',monospace;font-size:12px;color:var(--killing);font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+        .lp-file{font-family:'Space Grotesk',monospace;font-size:11px;color:#bbaa77;line-height:1.6;display:block;padding:2px 0}
+        .lp-file i{color:var(--text-muted);width:14px;text-align:center;margin-right:4px;font-size:10px}
+        .files-panel{background:rgba(192,132,252,0.04);border:1px solid rgba(192,132,252,0.12)}
+        .fp-appdir{font-family:'Space Grotesk',monospace;font-size:11px;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-weight:500}
+        .fp-appdir i{font-size:10px;opacity:.7}
+        .fp-file{font-family:'Space Grotesk',monospace;font-size:11px;color:var(--text-secondary);line-height:1.7;display:flex;align-items:center;gap:8px;padding:1px 0}
+        .fp-file i{width:14px;text-align:center;font-size:10px;flex-shrink:0;color:var(--text-muted)}
+        .fp-file .fp-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .fp-file .fp-tag{font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:3px;font-weight:600;flex-shrink:0}
+        .fp-file .fp-open{font-size:9px;color:var(--text-muted);cursor:pointer;padding:2px 5px;border-radius:3px;flex-shrink:0;transition:all .15s;background:none;border:none;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif}
+        .fp-file .fp-open:hover{color:var(--accent);background:rgba(192,132,252,0.1)}
+        .tag-config{background:rgba(96,165,250,0.1);color:#60a5fa}.tag-log{background:rgba(251,191,36,0.1);color:#fbbf24}
+        .tag-data{background:rgba(34,197,94,0.1);color:#22c55e}.tag-source{background:rgba(192,132,252,0.1);color:#c084fc}
+        .tag-binary{background:rgba(244,114,182,0.1);color:#f472b6}.tag-socket{background:rgba(245,158,11,0.1);color:#f59e0b}
+        .tag-lock{background:rgba(239,68,68,0.1);color:#ef4444}.tag-env{background:rgba(45,212,191,0.1);color:#2dd4bf}
+        .tag-cert{background:rgba(251,146,60,0.1);color:#fb923c}.tag-runtime{background:rgba(244,114,182,0.1);color:#f472b6}
+        .view-files-btn{background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;padding:0;margin-top:3px;transition:color .15s}
+        .view-files-btn:hover{color:var(--accent)}.view-files-btn i{font-size:9px;transition:transform .2s}.view-files-btn.open i{transform:rotate(90deg)}
+        .dismiss-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:10px;padding:2px 6px;border-radius:4px;transition:color .15s;font-family:'DM Sans',sans-serif}.dismiss-btn:hover{color:var(--text-secondary)}
+        .kill-btn{height:28px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.08);color:rgba(239,68,68,0.7);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;font-family:'Space Grotesk',monospace;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:0 10px;gap:5px;white-space:nowrap}
+        .kill-btn:hover:not(:disabled){background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.4);color:var(--danger)}
+        .kill-btn:disabled{cursor:not-allowed;opacity:.3}
+        .kill-btn.confirm-state{background:rgba(239,68,68,0.22);border-color:rgba(239,68,68,0.5);color:#ff6666;animation:bp .8s ease-in-out infinite}
+        .kill-btn.spinner-state{color:var(--killing);border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);pointer-events:none}
+        .kill-btn.locked-state{border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:var(--killing);pointer-events:none}
+        @keyframes bp{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 10px 2px rgba(239,68,68,0.15)}}
+        .start-btn{height:28px;border-radius:6px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.08);color:rgba(34,197,94,0.7);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;font-family:'Space Grotesk',monospace;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:0 10px;gap:5px;white-space:nowrap}
+        .start-btn:hover{background:rgba(34,197,94,0.18);border-color:rgba(34,197,94,0.4);color:var(--online)}
+        .start-btn.spinner-state{color:var(--accent);border-color:rgba(192,132,252,0.3);background:rgba(192,132,252,0.08);pointer-events:none}
+        .meta-value{font-family:'Space Grotesk',monospace;font-size:13px;font-weight:500;color:var(--text-secondary);line-height:1;transition:opacity .4s}
+        .meta-value.port-link{color:var(--text);text-decoration:none;cursor:pointer;transition:color .15s}.meta-value.port-link:hover{color:var(--accent)}
+        .filter-tab{padding:6px 14px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-secondary);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
+        .filter-tab:hover{color:var(--text);background:var(--surface-hover)}
+        .filter-tab.active{background:rgba(13,17,48,0.6);border-color:var(--border);color:var(--text)}
+        .filter-tab .count{display:inline-block;min-width:18px;text-align:center;padding:0 5px;border-radius:4px;background:rgba(255,255,255,0.05);font-size:11px;margin-left:6px;color:var(--text-muted);font-weight:600}
+        .filter-tab.active .count{background:rgba(255,255,255,0.08);color:var(--text-secondary)}
+        .search-input{background:rgba(13,17,48,0.6);border:1px solid var(--border);border-radius:8px;padding:7px 12px 7px 34px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .2s,box-shadow .2s;width:200px;backdrop-filter:blur(8px)}
+        .search-input::placeholder{color:var(--text-muted)}.search-input:focus{border-color:rgba(192,132,252,0.4);box-shadow:0 0 0 3px rgba(192,132,252,0.08)}
+        .scan-progress{height:2px;background:linear-gradient(90deg,var(--accent),rgba(139,92,246,0.3));border-radius:2px;transition:width .15s linear;position:absolute;top:0;left:0;z-index:2}
+        .server-row.reveal{animation:ri .35s ease-out both}
+        @keyframes ri{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .toast-container{position:fixed;bottom:24px;right:24px;z-index:100;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+        .toast{background:rgba(20,24,56,0.95);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,0.5);animation:ti .3s ease-out;pointer-events:auto;max-width:420px}
+        .toast.leaving{animation:to .25s ease-in forwards}
+        .toast .toast-icon{font-size:14px;flex-shrink:0}
+        .toast.success .toast-icon{color:var(--online)}.toast.error .toast-icon{color:var(--danger)}.toast.info .toast-icon{color:var(--accent)}.toast.warning .toast-icon{color:var(--killing)}
+        @keyframes ti{from{opacity:0;transform:translateX(30px) scale(.95)}to{opacity:1;transform:translateX(0) scale(1)}}
+        @keyframes to{to{opacity:0;transform:translateX(30px) scale(.95)}}
+        .action-btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:rgba(13,17,48,0.6);backdrop-filter:blur(8px);color:var(--text-secondary);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:7px;transition:all .2s}
+        .action-btn:hover{background:var(--surface-hover);color:var(--text);border-color:#2a2a60}
+        .action-btn.accent{border-color:rgba(192,132,252,0.25);color:var(--accent)}.action-btn.accent:hover{background:rgba(192,132,252,0.08);border-color:rgba(192,132,252,0.4)}
+        .action-btn.danger-text{color:rgba(239,68,68,0.7);border-color:rgba(239,68,68,0.15)}.action-btn.danger-text:hover{color:var(--danger);background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)}
+        .empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+        .gpu-widget{background:rgba(13,17,48,0.5);backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);border:1px solid rgba(28,32,85,0.5);border-radius:14px;padding:18px 22px;min-width:260px;animation:gi .5s ease-out}
+        @keyframes gi{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+        .gpu-pct{font-family:'Space Grotesk',monospace;font-size:42px;font-weight:700;line-height:1;background:linear-gradient(135deg,var(--gpu-color),#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .gpu-bar-track{width:100%;height:4px;background:rgba(56,189,248,0.1);border-radius:2px;overflow:hidden;margin-top:10px}
+        .gpu-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--gpu-color),#818cf8);transition:width .8s ease}
+        .gpu-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-muted);font-weight:600}
+        .gpu-name{font-family:'Space Grotesk',monospace;font-size:11px;color:var(--text-secondary);margin-top:2px}
+        .gpu-note{font-size:9px;color:var(--text-muted);margin-top:8px;line-height:1.4;opacity:.6}
+        .gpu-top-btn{background:none;border:1px solid rgba(56,189,248,0.2);color:var(--gpu-color);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;cursor:pointer;padding:4px 10px;border-radius:6px;margin-top:10px;transition:all .15s;display:flex;align-items:center;gap:5px}
+        .gpu-top-btn:hover{background:rgba(56,189,248,0.08);border-color:rgba(56,189,248,0.35)}
+        .gpu-dropdown{position:absolute;top:calc(100% + 8px);right:0;background:rgba(13,17,48,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(28,32,85,0.6);border-radius:12px;padding:14px 18px;min-width:280px;box-shadow:0 16px 48px rgba(0,0,0,0.5);animation:ddi .2s ease-out;z-index:50}
+        @keyframes ddi{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+        .gpu-dd-title{font-family:'Space Grotesk',monospace;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:10px}
+        .gpu-dd-row{display:flex;align-items:center;gap:10px;padding:6px 0}
+        .gpu-dd-rank{font-family:'Space Grotesk',monospace;font-size:10px;color:var(--text-muted);width:16px;text-align:center;font-weight:600}
+        .gpu-dd-app{font-family:'Space Grotesk',monospace;font-size:12px;color:var(--text-secondary);flex:1}
+        .gpu-dd-pct{font-family:'Space Grotesk',monospace;font-size:12px;font-weight:600;color:var(--gpu-color);min-width:42px;text-align:right}
+        .gpu-dd-bar{width:60px;height:3px;background:rgba(56,189,248,0.1);border-radius:2px;overflow:hidden;flex-shrink:0}
+        .gpu-dd-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--gpu-color),#818cf8)}
+        .spec-chip{font-family:'Space Grotesk',monospace;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px}
+        .spec-chip i{font-size:9px}.spec-chip .spec-val{color:var(--text-secondary);font-weight:500}
+        .author-tag{font-family:'Space Grotesk',monospace;font-size:10px;color:var(--text-muted);letter-spacing:.04em}
+        .author-tag .author-name{color:var(--text-secondary);font-weight:600}
+        @media(max-width:900px){.meta-pid,.meta-memory{display:none!important}.search-input{width:160px}.gpu-widget{min-width:220px;padding:14px 16px}.gpu-pct{font-size:32px}}
+        @media(max-width:640px){.server-row{padding:12px 14px;gap:10px}.meta-uptime{display:none!important}.search-input{width:130px;font-size:12px}.filter-tab{padding:5px 10px;font-size:12px}.header-actions{gap:6px!important}.action-btn{padding:6px 10px;font-size:12px}.action-btn .btn-label{display:none}.kill-btn,.start-btn{font-size:9px;padding:0 7px}.fp-file .fp-open span{display:none}.gpu-widget{min-width:180px;padding:12px 14px}.gpu-pct{font-size:28px}.gpu-name{font-size:10px}.gpu-dropdown{min-width:240px;right:-20px}}
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#333366}
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="px-6 md:px-10 pt-8 pb-4">
+            <div class="max-w-5xl mx-auto flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-8 h-8 rounded-lg border flex items-center justify-center" style="background:rgba(13,17,48,0.6);border-color:rgba(28,32,85,0.6);backdrop-filter:blur(8px)">
+                            <i class="fa-solid fa-server text-xs text-[#8888aa]"></i>
+                        </div>
+                        <h1 class="font-heading text-2xl font-bold tracking-tight text-[#e8e8f0]">TOGGLR</h1>
+                    </div>
+                    <p class="font-body text-sm text-[#4a4a6a] ml-11">Server Manager</p>
+                    <div class="flex items-center gap-5 mt-3 ml-11 flex-wrap" id="specChips"></div>
+                    <p class="author-tag ml-11 mt-2">by <span class="author-name">Joseph Oracoy</span></p>
+                </div>
+                <div class="flex items-center gap-3" id="headerActions" class="header-actions">
+                    <button id="rescanBtn" class="action-btn accent" onclick="rescan()" title="Rescan servers">
+                        <i class="fa-solid fa-arrows-rotate" id="rescanIcon"></i>
+                        <span class="btn-label">Rescan</span>
+                    </button>
+                    <button id="killAllBtn" class="action-btn danger-text" onclick="killAllOnline()" style="display:none" title="Force kill all online servers">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                        <span class="btn-label">Kill All</span>
+                    </button>
+                </div>
+
+                <div class="relative" id="gpuWidgetWrap">
+                    <div class="gpu-widget" id="gpuWidget">
+                        <div class="gpu-label">GPU Usage</div>
+                        <div class="gpu-name" id="gpuName">Detecting...</div>
+                        <div class="gpu-pct" id="gpuPct">—</div>
+                        <div class="gpu-bar-track"><div class="gpu-bar-fill" id="gpuBar" style="width:0%"></div></div>
+                        <div class="gpu-note" id="gpuNote"></div>
+                        <button class="gpu-top-btn" onclick="toggleGpuDropdown()">
+                            <i class="fa-solid fa-chart-bar" style="font-size:10px"></i> Top GPU Apps
+                        </button>
+                    </div>
+                    <div class="gpu-dropdown hidden" id="gpuDropdown"></div>
+                </div>
+            </div>
+        </header>
+
+        <main class="px-6 md:px-10 pb-16">
+            <div class="max-w-5xl mx-auto">
+                <div class="flex items-center gap-6 mb-5 px-1">
+                    <div class="flex items-center gap-2"><span class="status-dot online"></span><span class="font-body text-sm font-medium text-[#8888aa]" id="onlineCount">0 running</span></div>
+                    <div class="flex items-center gap-2"><span class="status-dot offline"></span><span class="font-body text-sm font-medium text-[#4a4a6a]" id="offlineCount">0 stopped</span></div>
+                </div>
+                <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                    <div class="flex items-center gap-2" id="filterTabs" role="tablist">
+                        <button class="filter-tab active" data-filter="all" role="tab">All<span class="count" id="countAll">0</span></button>
+                        <button class="filter-tab" data-filter="online" role="tab">Online<span class="count" id="countOnline">0</span></button>
+                        <button class="filter-tab" data-filter="offline" role="tab">Offline<span class="count" id="countOffline">0</span></button>
+                    </div>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[#3a3a5c] text-xs"></i>
+                        <input type="text" class="search-input" id="searchInput" placeholder="Filter servers..." aria-label="Search servers">
+                    </div>
+                </div>
+                <div class="rounded-xl overflow-hidden relative" id="listContainer">
+                    <div class="scan-progress" id="scanProgress" style="width:0%;display:none"></div>
+                    <div id="serverList"></div>
+                    <div class="empty-state hidden" id="emptyState">
+                        <i class="fa-solid fa-ghost text-3xl mb-3 text-[#1c2055]"></i>
+                        <p class="font-body text-sm">No servers match your filter</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 px-5 py-2 mt-2 text-[10px] uppercase tracking-widest text-[#252850] font-medium font-heading select-none max-w-5xl mx-auto">
+                    <span style="width:8px"></span><span class="flex-1">Server</span>
+                    <span class="meta-port w-16 text-right">Port</span>
+                    <span class="meta-pid w-16 text-right">PID</span>
+                    <span class="meta-memory w-20 text-right">Memory</span>
+                    <span class="meta-uptime w-16 text-right">Uptime</span>
+                    <span style="width:96px"></span>
+                </div>
+            </div>
+        </main>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    (function() {
+        "use strict";
+
+        var FILE_ICONS = {
+            config:{icon:'fa-solid fa-gear',tag:'config'}, log:{icon:'fa-solid fa-file-lines',tag:'log'},
+            data:{icon:'fa-solid fa-database',tag:'data'}, source:{icon:'fa-solid fa-code',tag:'source'},
+            binary:{icon:'fa-solid fa-cube',tag:'binary'}, socket:{icon:'fa-solid fa-plug',tag:'socket'},
+            lock:{icon:'fa-solid fa-lock',tag:'lock'}, env:{icon:'fa-solid fa-shield-halved',tag:'env'},
+            cert:{icon:'fa-solid fa-certificate',tag:'cert'}, runtime:{icon:'fa-solid fa-microchip',tag:'runtime'},
+        };
+
+        function esc(s) {
+            if (s === null || s === undefined) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        /* ===== SYSTEM DETECTION ===== */
+        function detectSystem() {
+            var ua = navigator.userAgent || '';
+            var plat = navigator.platform || '';
+            var os = 'Linux', arch = 'x86_64', isWindows = false, isMac = false;
+
+            if (plat.indexOf('Mac') === 0 || plat === 'MacIntel' || plat === 'MacARM') {
+                isMac = true; os = 'macOS';
+                arch = (plat === 'MacARM' || ua.indexOf('ARM') > -1) ? 'arm64' : 'x86_64';
+            } else if (plat.indexOf('Win') === 0) {
+                isWindows = true; os = 'Windows';
+                arch = (plat.indexOf('64') > -1) ? 'x86_64' : 'x86';
+            } else if (plat.indexOf('Linux') > -1) {
+                arch = ua.indexOf('aarch64') > -1 ? 'aarch64' : 'x86_64';
+            }
+            if (!isWindows && !isMac && ua.indexOf('Mac') > -1) {
+                isMac = true; os = 'macOS';
+                arch = ua.indexOf('ARM') > -1 ? 'arm64' : 'x86_64';
+            }
+            if (!isWindows && !isMac && ua.indexOf('Windows') > -1) {
+                isWindows = true; os = 'Windows';
+                arch = ua.indexOf('x64') > -1 ? 'x86_64' : 'x86';
+            }
+
+            var tz = new Date().getTimezoneOffset();
+            var names = isWindows ? ['Developer','Admin','User'] : ['developer','admin','dev','user'];
+            var username = names[Math.abs(tz) % names.length];
+            var homeDir = isWindows ? 'C:\\Users\\' + username : isMac ? '/Users/' + username : '/home/' + username;
+
+            return { os:os, arch:arch, username:username, homeDir:homeDir, isWindows:isWindows, isMac:isMac };
+        }
+
+        /* ===== GPU DETECTION via WebGL ===== */
+        function detectGpu() {
+            try {
+                var c = document.createElement('canvas');
+                var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+                if (!gl) return 'Unknown GPU';
+                var ext = gl.getExtension('WEBGL_debug_renderer_info');
+                if (ext) {
+                    var renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+                    /* Clean up common prefixes */
+                    renderer = renderer.replace(/^ANGLE \(/, '').replace(/\)$/, '');
+                    return renderer;
+                }
+                return gl.getParameter(gl.RENDERER) || 'Unknown GPU';
+            } catch(e) {
+                return 'Unknown GPU';
+            }
+        }
+
+        /* ===== STATE ===== */
+        var SYS = detectSystem();
+        var activeFilter = 'all';
+        var searchQuery = '';
+        var killConfirmId = null;
+        var killConfirmTimer = null;
+        var isScanning = false;
+        var discoveredIds = {};
+        var lockedServers = {};
+        var openFilePanels = {};
+        var gpuDropdownOpen = false;
+        var gpuValue = 34;
+        var gpuApps = [];
+
+        /* ===== HELPERS ===== */
+        function p(unix, win) { return SYS.isWindows ? win : unix; }
+        function H() { return SYS.homeDir; }
+        function S() { return SYS.isWindows ? '\\' : '/'; }
+
+        /* ===== BUILD SERVER DATA ===== */
+        function buildServers() {
+            var h = H(), s = S();
+            return [
+                {id:1,name:'Node.js',desc:'Express Development Server',icon:'fa-brands fa-node-js',iconColor:'#68a063',port:3000,pid:48291,memory:'84.2 MB',uptime:'2h 14m',status:'online',error:null,locked:null,
+                 appDir:h+s+'projects'+s+'my-app',
+                 files:[
+                    {path:h+s+'projects'+s+'my-app'+s+'server.js',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'routes'+s+'index.js',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'routes'+s+'api.js',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'middleware'+s+'auth.js',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'.env',type:'env'},
+                    {path:h+s+'projects'+s+'my-app'+s+'package.json',type:'config'},
+                    {path:p('/usr/local/bin/node','C:\\Program Files\\nodejs\\node.exe'),type:'runtime'},
+                ]},
+                {id:2,name:'Mailpit',desc:'Email & SMTP Testing Server',icon:'fa-solid fa-envelope',iconColor:'#e879a0',port:8025,pid:48302,memory:'32.1 MB',uptime:'2h 14m',status:'online',error:null,locked:null,
+                 appDir:p('/opt/mailpit','C:\\Tools\\mailpit'),
+                 files:[
+                    {path:p('/opt/mailpit/mailpit','C:\\Tools\\mailpit\\mailpit.exe'),type:'binary'},
+                    {path:p('/opt/mailpit/mailpit.db','C:\\Tools\\mailpit\\data\\mailpit.db'),type:'data'},
+                    {path:p('/opt/mailpit/mailpit.db-wal','C:\\Tools\\mailpit\\data\\mailpit.db-wal'),type:'data'},
+                    {path:p('/opt/mailpit/mailpit.db-shm','C:\\Tools\\mailpit\\data\\mailpit.db-shm'),type:'data'},
+                ]},
+                {id:3,name:'Redis',desc:'In-Memory Data Store',icon:'fa-solid fa-database',iconColor:'#dc382d',port:6379,pid:47810,memory:'12.8 MB',uptime:'2h 14m',status:'online',error:null,locked:null,
+                 appDir:p('/usr/local/var/redis','C:\\Program Files\\Redis'),
+                 files:[
+                    {path:p('/usr/local/etc/redis.conf','C:\\Program Files\\Redis\\redis.windows.conf'),type:'config'},
+                    {path:p('/usr/local/var/redis/dump.rdb','C:\\Program Files\\Redis\\data\\dump.rdb'),type:'data'},
+                    {path:p('/usr/local/var/redis/appendonly.aof','C:\\Program Files\\Redis\\data\\appendonly.aof'),type:'data'},
+                    {path:p('/var/log/redis/redis-server.log','C:\\Program Files\\Redis\\logs\\redis-server.log'),type:'log'},
+                ]},
+                {id:4,name:'PostgreSQL',desc:'Relational Database',icon:'fa-solid fa-database',iconColor:'#336791',port:5432,pid:47200,memory:'156.4 MB',uptime:'2h 14m',status:'online',error:null,locked:null,
+                 appDir:p('/var/lib/postgresql/16/main','C:\\Program Files\\PostgreSQL\\16\\data'),
+                 files:[
+                    {path:p('/var/lib/postgresql/16/main/postmaster.pid','C:\\Program Files\\PostgreSQL\\16\\data\\postmaster.pid'),type:'lock'},
+                    {path:p('/var/lib/postgresql/16/main/postgresql.conf','C:\\Program Files\\PostgreSQL\\16\\data\\postgresql.conf'),type:'config'},
+                    {path:p('/var/lib/postgresql/16/main/pg_hba.conf','C:\\Program Files\\PostgreSQL\\16\\data\\pg_hba.conf'),type:'config'},
+                    {path:p('/var/lib/postgresql/16/main/pg_ident.conf','C:\\Program Files\\PostgreSQL\\16\\data\\pg_ident.conf'),type:'config'},
+                    {path:p('/var/lib/postgresql/16/main/base/16384/16385','C:\\Program Files\\PostgreSQL\\16\\data\\base\\16384\\16385'),type:'data'},
+                    {path:p('/var/lib/postgresql/16/main/global/pg_control','C:\\Program Files\\PostgreSQL\\16\\data\\global\\pg_control'),type:'data'},
+                    {path:p('/var/run/postgresql/.s.PGSQL.5432','C:\\Program Files\\PostgreSQL\\16\\data\\.s.PGSQL.5432'),type:'socket'},
+                    {path:p('/var/log/postgresql/postgresql-16-main.log','C:\\Program Files\\PostgreSQL\\16\\logs\\postgresql-16-main.log'),type:'log'},
+                ]},
+                {id:5,name:'MySQL',desc:'Relational Database',icon:'fa-solid fa-database',iconColor:'#00758f',port:3306,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:6,name:'MongoDB',desc:'Document Database',icon:'fa-solid fa-leaf',iconColor:'#4db33d',port:27017,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:7,name:'Nginx',desc:'Reverse Proxy Server',icon:'fa-solid fa-globe',iconColor:'#009639',port:80,pid:47000,memory:'8.4 MB',uptime:'2h 14m',status:'online',error:null,locked:null,
+                 appDir:p('/etc/nginx','C:\\nginx'),
+                 files:[
+                    {path:p('/etc/nginx/nginx.conf','C:\\nginx\\conf\\nginx.conf'),type:'config'},
+                    {path:p('/etc/nginx/sites-enabled/my-app.conf','C:\\nginx\\conf\\sites-enabled\\my-app.conf'),type:'config'},
+                    {path:p('/etc/nginx/sites-enabled/api.conf','C:\\nginx\\conf\\sites-enabled\\api.conf'),type:'config'},
+                    {path:p('/etc/nginx/mime.types','C:\\nginx\\conf\\mime.types'),type:'config'},
+                    {path:p('/var/log/nginx/access.log','C:\\nginx\\logs\\access.log'),type:'log'},
+                    {path:p('/var/log/nginx/error.log','C:\\nginx\\logs\\error.log'),type:'log'},
+                    {path:p('/var/run/nginx.pid','C:\\nginx\\logs\\nginx.pid'),type:'lock'},
+                    {path:p('/var/cache/nginx/proxy_temp/0/00/0000000001','C:\\nginx\\cache\\proxy_temp\\0\\00\\0000000001'),type:'data'},
+                ]},
+                {id:8,name:'Django',desc:'Python Development Server',icon:'fa-brands fa-python',iconColor:'#3776ab',port:8000,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:9,name:'PHP',desc:'Built-in Development Server',icon:'fa-brands fa-php',iconColor:'#777bb4',port:8080,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:10,name:'MinIO',desc:'S3-Compatible Object Storage',icon:'fa-solid fa-cloud',iconColor:'#c72c48',port:9000,pid:48500,memory:'64.8 MB',uptime:'1h 48m',status:'online',error:null,locked:null,
+                 appDir:p('/opt/minio','C:\\Tools\\minio'),
+                 files:[
+                    {path:p('/opt/minio/minio','C:\\Tools\\minio\\minio.exe'),type:'binary'},
+                    {path:p('/opt/minio/.minio.sys/config/config.json','C:\\Tools\\minio\\.minio.sys\\config\\config.json'),type:'config'},
+                    {path:p('/opt/minio/.minio.sys/config/iam/current-policy.json','C:\\Tools\\minio\\.minio.sys\\config\\iam\\current-policy.json'),type:'config'},
+                    {path:p('/opt/minio/data/bucket-1/object-abc123','C:\\Tools\\minio\\data\\bucket-1\\object-abc123'),type:'data'},
+                    {path:p('/opt/minio/data/bucket-2/object-def456','C:\\Tools\\minio\\data\\bucket-2\\object-def456'),type:'data'},
+                    {path:p('/var/log/minio/minio.log','C:\\Tools\\minio\\logs\\minio.log'),type:'log'},
+                    {path:p('/root/.minio/certs/CAs/public.crt','C:\\Users\\'+SYS.username+'\\.minio\\certs\\CAs\\public.crt'),type:'cert'},
+                    {path:p('/root/.minio/certs/private.key','C:\\Users\\'+SYS.username+'\\.minio\\certs\\private.key'),type:'cert'},
+                ]},
+                {id:11,name:'Memcached',desc:'Memory Caching System',icon:'fa-solid fa-bolt',iconColor:'#2895c3',port:11211,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:12,name:'Elasticsearch',desc:'Search & Analytics Engine',icon:'fa-solid fa-magnifying-glass',iconColor:'#fed10a',port:9200,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:13,name:'RabbitMQ',desc:'Message Queue Broker',icon:'fa-solid fa-message',iconColor:'#ff6600',port:5672,pid:null,memory:'—',uptime:'—',status:'offline',error:null,locked:null,appDir:null,files:[]},
+                {id:14,name:'Vite',desc:'Frontend Dev Server',icon:'fa-solid fa-bolt-lightning',iconColor:'#646cff',port:5173,pid:49012,memory:'142.6 MB',uptime:'0h 32m',status:'online',error:null,locked:null,
+                 appDir:h+s+'projects'+s+'my-app'+s+'client',
+                 files:[
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'vite.config.ts',type:'config'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'tsconfig.json',type:'config'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'src'+s+'main.tsx',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'src'+s+'App.tsx',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'src'+s+'pages'+s+'Dashboard.tsx',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'src'+s+'pages'+s+'Settings.tsx',type:'source'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'node_modules'+s+'.vite'+s+'deps'+s+'_vite.json',type:'data'},
+                    {path:h+s+'projects'+s+'my-app'+s+'client'+s+'.env.local',type:'env'},
+                ]},
+            ];
+        }
+
+        function buildLockScenarios() {
+            return {
+                4:{title:'Force kill failed — process is locked',files:[
+                    {path:p('/var/lib/postgresql/16/main/postmaster.pid','C:\\Program Files\\PostgreSQL\\16\\data\\postmaster.pid'),type:'fa-solid fa-file-lines'},
+                    {path:p('/var/run/postgresql/.s.PGSQL.5432','C:\\Program Files\\PostgreSQL\\16\\data\\.s.PGSQL.5432'),type:'fa-solid fa-plug'},
+                    {path:p('/var/log/postgresql/postgresql-16-main.log','C:\\Program Files\\PostgreSQL\\16\\logs\\postgresql-16-main.log'),type:'fa-solid fa-file-pen'},
+                ]},
+                7:{title:'Force kill failed — child processes active',files:[
+                    {path:p('/var/log/nginx/access.log','C:\\nginx\\logs\\access.log'),type:'fa-solid fa-file-lines'},
+                    {path:p('/var/log/nginx/error.log','C:\\nginx\\logs\\error.log'),type:'fa-solid fa-file-pen'},
+                    {path:p('/etc/nginx/nginx.conf','C:\\nginx\\conf\\nginx.conf'),type:'fa-solid fa-gear'},
+                    {path:p('/var/run/nginx.pid (locked by worker 47001)','C:\\nginx\\logs\\nginx.pid (locked by worker 47001)'),type:'fa-solid fa-lock'},
+                ]},
+            };
+        }
+
+        function buildStartErrors() {
+            return {
+                5:{title:'EADDRINUSE: Address already in use',msg:'Port 3306 is already occupied by an unknown process.',solution:'Run <strong>lsof -i :3306</strong> to identify the process, then kill it with <strong>kill -9 &lt;PID&gt;</strong>, or change the MySQL port.'},
+                6:{title:'DATA_PATH_NOT_FOUND',msg:'Directory '+H()+'/mongodb/data does not exist.',solution:'Create the data directory: <strong>mkdir -p '+H()+'/mongodb/data</strong>, then retry.'},
+                8:{title:"ModuleNotFoundError: No module named 'django'",msg:'The Django package is not installed in the current Python environment.',solution:'Install it with <strong>pip install django</strong> or activate the correct virtual environment first.'},
+                9:{title:'PHP Warning: php.ini not found',msg:'No configuration file loaded.',solution:'Copy the default config: <strong>cp php.ini-development /usr/local/etc/php/php.ini</strong>, then restart.'},
+                11:{title:'Permission denied: /var/run/memcached.pid',msg:'Cannot write PID file — insufficient permissions.',solution:'Run with <strong>sudo memcached</strong> or fix permissions: <strong>sudo chown $(whoami) /var/run</strong>'},
+                12:{title:'Max file descriptors [4096] too low',msg:'Elasticsearch requires at least 65536 file descriptors.',solution:'Increase the limit: <strong>ulimit -n 65536</strong>'},
+                13:{title:'EPMD error: node is not running',msg:'Erlang Port Mapper Daemon is not available on this host.',solution:'Start EPMD first: <strong>epmd -daemon</strong>, then start RabbitMQ with <strong>rabbitmq-server</strong>.'},
+            };
+        }
+
+        var servers = buildServers();
+        var LOCK_SCENARIOS = buildLockScenarios();
+        var START_ERRORS = buildStartErrors();
+
+        /* ===== GPU ===== */
+        var GPU_APPS = [
+            {name:'Chrome',base:12},{name:'VS Code',base:8},{name:'Figma',base:15},
+            {name:'Blender',base:25},{name:'Docker',base:5},{name:'Slack',base:3},
+            {name:'Spotify',base:2},{name:'OBS Studio',base:18},{name:'Terminal',base:1},
+            {name:'Discord',base:4},{name:'Safari',base:6},{name:'Firefox',base:5},
+            {name:'Steam',base:10},{name:'ffmpeg',base:30},{name:'Python (ml)',base:20},
+        ];
+
+        function genGpuApps() {
+            var shuffled = GPU_APPS.slice().sort(function(){return Math.random()-0.5});
+            var picked = shuffled.slice(0,5);
+            picked.forEach(function(a){a.value=Math.max(0.5,Math.min(95,a.base+(Math.random()-0.5)*4))});
+            picked.sort(function(a,b){return b.value-a.value});
+            return picked;
+        }
+
+        function updateGpu() {
+            gpuValue += (Math.random()-0.48)*3;
+            gpuValue = Math.max(8,Math.min(92,gpuValue));
+            gpuApps = genGpuApps();
+            var pct = Math.round(gpuValue);
+            document.getElementById('gpuPct').textContent = pct + '%';
+            document.getElementById('gpuBar').style.width = pct + '%';
+            if (gpuDropdownOpen) renderGpuDropdown();
+        }
+
+        function renderGpuDropdown() {
+            var el = document.getElementById('gpuDropdown');
+            var html = '<div class="gpu-dd-title">Top 5 Apps Using GPU</div>';
+            gpuApps.forEach(function(a,i){
+                var w = Math.max(4,(a.value/95)*100);
+                html += '<div class="gpu-dd-row"><span class="gpu-dd-rank">'+(i+1)+'</span><span class="gpu-dd-app">'+esc(a.name)+'</span><div class="gpu-dd-bar"><div class="gpu-dd-bar-fill" style="width:'+w+'%"></div></div><span class="gpu-dd-pct">'+Math.round(a.value)+'%</span></div>';
+            });
+            el.innerHTML = html;
+        }
+
+        window.toggleGpuDropdown = function() {
+            gpuDropdownOpen = !gpuDropdownOpen;
+            var el = document.getElementById('gpuDropdown');
+            if (gpuDropdownOpen) { gpuApps = genGpuApps(); renderGpuDropdown(); el.classList.remove('hidden'); }
+            else { el.classList.add('hidden'); }
+        };
+        document.addEventListener('click',function(e){
+            if (gpuDropdownOpen && !e.target.closest('#gpuWidgetWrap')) { gpuDropdownOpen=false; document.getElementById('gpuDropdown').classList.add('hidden'); }
+        });
+
+        /* ===== SPECS ===== */
+        function renderSpecs() {
+            var cpus = SYS.arch==='arm64'?'8 cores':SYS.arch==='aarch64'?'4 cores':'12 cores';
+            var mem = SYS.isMac?'16 GB':'32 GB';
+            var disk = SYS.isMac?'512 GB SSD':'1 TB NVMe';
+            document.getElementById('specChips').innerHTML =
+                '<span class="spec-chip"><i class="fa-solid fa-microchip"></i> <span class="spec-val">'+esc(cpus)+'</span></span>'+
+                '<span class="spec-chip"><i class="fa-solid fa-memory"></i> <span class="spec-val">'+esc(mem)+'</span></span>'+
+                '<span class="spec-chip"><i class="fa-solid fa-hard-drive"></i> <span class="spec-val">'+esc(disk)+'</span></span>'+
+                '<span class="spec-chip"><i class="fa-solid fa-display"></i> <span class="spec-val">'+esc(SYS.arch)+'</span></span>'+
+                '<span class="spec-chip"><i class="fa-solid fa-folder"></i> <span class="spec-val">'+esc(SYS.homeDir)+'</span></span>';
+        }
+
+        /* ===== OPEN FILE ===== */
+        function openFileLocation(fullPath) {
+            var dir;
+            if (SYS.isWindows) { var l=fullPath.lastIndexOf('\\'); dir=l>=0?fullPath.substring(0,l+1):fullPath; }
+            else { var l=fullPath.lastIndexOf('/'); dir=l>=0?fullPath.substring(0,l):fullPath; }
+            var cmd = SYS.isWindows?'explorer "'+dir.replace(/\//g,'\\')+'"': SYS.isMac?'open "'+dir+'"':'xdg-open "'+dir+'"';
+            navigator.clipboard.writeText(cmd).then(function(){showToast('Copied — paste in terminal:\n'+cmd,'info')}).catch(function(){showToast('Run in terminal: '+cmd,'info')});
+        }
+
+        /* ===== FILTERING ===== */
+        function getFiltered() {
+            return servers.filter(function(s){
+                if (!discoveredIds[s.id]) return false;
+                if (activeFilter!=='all' && s.status!==activeFilter) return false;
+                if (searchQuery) {
+                    var q = searchQuery.toLowerCase();
+                    if (s.name.toLowerCase().indexOf(q)<0 && s.desc.toLowerCase().indexOf(q)<0 && String(s.port).indexOf(q)<0) return false;
+                }
+                return true;
+            });
+        }
+
+        function getCounts() {
+            var on=0,off=0,all=0;
+            for (var i=0;i<servers.length;i++) {
+                if (!discoveredIds[servers[i].id]) continue;
+                all++; if (servers[i].status==='online') on++; else off++;
+            }
+            return {all:all,online:on,offline:off};
+        }
+
+        function getCommonPrefix(files) {
+            if (!files||files.length<=1) return '';
+            var prefix = files[0].path;
+            for (var i=1;i<files.length;i++) {
+                while (files[i].path.indexOf(prefix)!==0 && prefix.length>0) {
+                    var sep = prefix.indexOf('\\')>-1?'\\':'/';
+                    prefix = prefix.substring(0,prefix.lastIndexOf(sep));
+                }
+            }
+            var sep = prefix.indexOf('\\')>-1?'\\':'/';
+            var l = prefix.lastIndexOf(sep);
+            return l>=0?prefix.substring(0,l+1):'';
+        }
+
+        /* ===== RENDER ===== */
+        function render() {
+            try {
+                var filtered = getFiltered();
+                var counts = getCounts();
+                var listEl = document.getElementById('serverList');
+                var emptyEl = document.getElementById('emptyState');
+
+                document.getElementById('onlineCount').textContent = counts.online + ' running';
+                document.getElementById('offlineCount').textContent = counts.offline + ' stopped';
+                document.getElementById('countAll').textContent = counts.all;
+                document.getElementById('countOnline').textContent = counts.online;
+                document.getElementById('countOffline').textContent = counts.offline;
+                document.getElementById('killAllBtn').style.display = counts.online>0?'flex':'none';
+
+                if (filtered.length===0 && !isScanning) { listEl.innerHTML=''; emptyEl.classList.remove('hidden'); return; }
+                emptyEl.classList.add('hidden');
+
+                var html = '';
+                for (var i=0;i<filtered.length;i++) html += renderRow(filtered[i],i);
+                listEl.innerHTML = html;
+
+                /* Attach events */
+                var btns = listEl.querySelectorAll('[data-action]');
+                for (var j=0;j<btns.length;j++) {
+                    (function(btn){
+                        btn.addEventListener('click',function(e){
+                            e.stopPropagation();
+                            var id=parseInt(btn.dataset.id), action=btn.dataset.action;
+                            if (action==='kill-confirm') executeKill(id);
+                            else if (action==='kill-idle') showKillConfirm(id);
+                            else if (action==='start') executeStart(id);
+                            else if (action==='dismiss-error') dismissError(id);
+                            else if (action==='dismiss-lock') dismissLock(id);
+                            else if (action==='toggle-files') toggleFiles(id);
+                            else if (action==='open-file') openFileLocation(btn.dataset.path);
+                        });
+                    })(btns[j]);
+                }
+            } catch(err) {
+                console.error('Render error:', err);
+            }
+        }
+
+        function renderRow(s, index) {
+            var isOnline=s.status==='online', isKilling=s.status==='killing', isOffline=s.status==='offline';
+            var isStarting=s.status==='starting', isConfirming=killConfirmId===s.id, isLocked=!!lockedServers[s.id];
+            var showFiles=!!openFilePanels[s.id]&&s.files&&s.files.length>0;
+
+            var rc='server-row reveal';
+            if(isOffline&&!isStarting)rc+=' offline-row';if(isKilling)rc+=' killing-row';if(isStarting)rc+=' starting-row';
+
+            var dc='status-dot';
+            if(isOnline)dc+=' online';else if(isKilling)dc+=' killing';else if(isStarting)dc+=' starting';else dc+=' offline';
+
+            var ah='';
+            if(isKilling)ah='<button class="kill-btn spinner-state" disabled><i class="fa-solid fa-spinner fa-spin"></i> KILLING</button>';
+            else if(isLocked)ah='<button class="kill-btn locked-state" disabled><i class="fa-solid fa-lock"></i> LOCKED</button>';
+            else if(isConfirming)ah='<button class="kill-btn confirm-state" data-id="'+s.id+'" data-action="kill-confirm"><i class="fa-solid fa-skull-crossbones"></i> CONFIRM</button>';
+            else if(isOnline)ah='<button class="kill-btn" data-id="'+s.id+'" data-action="kill-idle"><i class="fa-solid fa-xmark"></i> FORCE KILL</button>';
+            else if(isStarting)ah='<button class="start-btn spinner-state" disabled><i class="fa-solid fa-spinner fa-spin"></i> STARTING</button>';
+            else ah='<button class="start-btn" data-id="'+s.id+'" data-action="start"><i class="fa-solid fa-play"></i> START</button>';
+
+            var pl=isOnline?'<a class="meta-value port-link" href="http://localhost:'+s.port+'" target="_blank" rel="noopener">:'+s.port+'</a>':'<span class="meta-value">:'+s.port+'</span>';
+
+            var vfb='';
+            if(isOnline&&s.files&&s.files.length>0)vfb='<button class="view-files-btn'+(showFiles?' open':'')+'" data-id="'+s.id+'" data-action="toggle-files"><i class="fa-solid fa-chevron-right"></i> View files ('+s.files.length+')</button>';
+
+            var fph='';
+            if(showFiles){
+                var adl=s.appDir?'<div class="fp-appdir"><i class="fa-solid fa-folder-open"></i>'+esc(s.appDir)+'</div>':'';
+                var prefix=getCommonPrefix(s.files);
+                var fl='';
+                for(var fi=0;fi<s.files.length;fi++){
+                    var f=s.files[fi], info=FILE_ICONS[f.type]||FILE_ICONS.config;
+                    var dp=prefix&&f.path.indexOf(prefix)===0?f.path.substring(prefix.length):f.path;
+                    fl+='<div class="fp-file" title="'+esc(f.path)+'"><i class="'+info.icon+'"></i><span class="fp-path">'+esc(dp)+'</span><span class="fp-tag tag-'+info.tag+'">'+info.tag+'</span><button class="fp-open" data-id="'+s.id+'" data-action="open-file" data-path="'+esc(f.path)+'" title="Open file location"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>Reveal</span></button></div>';
+                }
+                fph='<div class="inline-panel files-panel">'+adl+fl+'</div>';
+            }
+
+            var eh='';
+            if(s.error)eh='<div class="inline-panel error-panel"><div class="ep-title"><i class="fa-solid fa-triangle-exclamation"></i> '+esc(s.error.title)+'</div><div class="ep-msg">'+esc(s.error.msg)+'</div><div class="ep-solution"><strong>Solution:</strong> '+s.error.solution+'</div><div style="text-align:right;margin-top:6px"><button class="dismiss-btn" data-id="'+s.id+'" data-action="dismiss-error">Dismiss</button></div></div>';
+
+            var lh='';
+            if(isLocked&&LOCK_SCENARIOS[s.id]){var lk=LOCK_SCENARIOS[s.id];var lf='';for(var li=0;li<lk.files.length;li++)lf+='<span class="lp-file"><i class="'+lk.files[li].type+'"></i>'+esc(lk.files[li].path)+'</span>';
+                lh='<div class="inline-panel lock-panel"><div class="lp-title"><i class="fa-solid fa-lock"></i> '+esc(lk.title)+'</div><div>'+lf+'</div><div style="text-align:right;margin-top:6px"><button class="dismiss-btn" data-id="'+s.id+'" data-action="dismiss-lock">Dismiss</button></div></div>';}
+
+            return '<div class="'+rc+'" style="animation-delay:'+index*30+'ms"><span class="'+dc+'"></span><div class="flex-1 min-w-0" style="display:flex;flex-wrap:wrap;align-items:center;gap:0"><div style="display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0"><i class="'+s.icon+' text-sm flex-shrink-0" style="color:'+s.iconColor+';opacity:'+(isOffline&&!isStarting?0.3:0.75)+';width:18px;text-align:center"></i><div class="min-w-0"><div class="font-heading text-[14px] font-semibold tracking-tight truncate">'+esc(s.name)+'</div><div class="font-body text-[12px] text-[#4a4a6a] truncate">'+esc(s.desc)+'</div>'+vfb+'</div></div>'+fph+eh+lh+'</div><div class="meta-port w-16 text-right flex-shrink-0 hidden sm:block">'+pl+'</div><div class="meta-pid w-16 text-right flex-shrink-0 hidden"><span class="meta-value">'+esc(s.pid||'—')+'</span></div><div class="meta-memory w-20 text-right flex-shrink-0 hidden"><span class="meta-value">'+esc(s.memory)+'</span></div><div class="meta-uptime w-16 text-right flex-shrink-0 hidden md:block"><span class="meta-value">'+esc(s.uptime)+'</span></div>'+ah+'</div>';
+        }
+
+        /* ===== ACTIONS ===== */
+        function toggleFiles(id){openFilePanels[id]=!openFilePanels[id];render();}
+
+        function showKillConfirm(id){if(killConfirmTimer)clearTimeout(killConfirmTimer);killConfirmId=id;render();killConfirmTimer=setTimeout(function(){killConfirmId=null;render();},4000);}
+
+        function executeKill(id){
+            if(killConfirmTimer)clearTimeout(killConfirmTimer);killConfirmId=null;
+            var server=null;for(var i=0;i<servers.length;i++){if(servers[i].id===id){server=servers[i];break;}}
+            if(!server||server.status!=='online')return;
+            var savedPid=server.pid;delete openFilePanels[id];
+            if(LOCK_SCENARIOS[id]){server.status='killing';render();setTimeout(function(){server.status='online';lockedServers[id]=true;render();showToast('Failed to force kill '+server.name+' (PID '+savedPid+') — process is locked','warning');},1200);return;}
+            server.status='killing';render();setTimeout(function(){server.status='offline';server.pid=null;server.memory='—';server.uptime='—';server.error=null;delete lockedServers[id];render();showToast(server.name+' (PID '+savedPid+') force killed','success');},700);
+        }
+
+        window.killAllOnline = function(){
+            var ol=[];for(var i=0;i<servers.length;i++){if(servers[i].status==='online'&&discoveredIds[servers[i].id])ol.push(servers[i]);}
+            if(!ol.length)return;
+            document.getElementById('rescanBtn').disabled=true;document.getElementById('killAllBtn').disabled=true;
+            var idx=0,k=0;
+            function doNext(){
+                if(idx>=ol.length){if(k>0)showToast(k+' server'+(k>1?'s':'')+' terminated','info');document.getElementById('rescanBtn').disabled=false;document.getElementById('killAllBtn').disabled=false;return;}
+                var server=ol[idx],savedPid=server.pid;delete openFilePanels[server.id];
+                if(LOCK_SCENARIOS[server.id]){server.status='killing';render();setTimeout(function(){server.status='online';lockedServers[server.id]=true;render();showToast('Failed to force kill '+server.name+' — process is locked','warning');idx++;setTimeout(doNext,300);},1000);return;}
+                server.status='killing';render();setTimeout(function(){server.status='offline';server.pid=null;server.memory='—';server.uptime='—';server.error=null;delete lockedServers[server.id];k++;render();showToast(server.name+' (PID '+savedPid+') force killed','success');idx++;setTimeout(doNext,200);},500);
+            }
+            doNext();
+        };
+
+        function executeStart(id){
+            var s=null;for(var i=0;i<servers.length;i++){if(servers[i].id===id){s=servers[i];break;}}
+            if(!s||s.status!=='offline')return;s.error=null;s.status='starting';render();
+            setTimeout(function(){if(START_ERRORS[id]){s.status='offline';s.error=START_ERRORS[id];render();showToast('Failed to start '+s.name,'error');return;}
+            s.status='online';s.pid=40000+Math.floor(Math.random()*15000);s.memory=(Math.random()*180+8).toFixed(1)+' MB';s.uptime=Math.floor(Math.random()*2)+'h '+String(Math.floor(Math.random()*15)).padStart(2,'0')+'m';s.error=null;render();showToast(s.name+' started on :'+s.port,'success');},1200);
+        }
+
+        function dismissError(id){for(var i=0;i<servers.length;i++){if(servers[i].id===id){servers[i].error=null;render();return;}}}
+        function dismissLock(id){delete lockedServers[id];render();}
+
+        /* ===== SCANNING — uses setTimeout chain, not promises ===== */
+        function startScan(animate) {
+            if (isScanning) return;
+            isScanning = true;
+            discoveredIds = {};
+
+            var bar = document.getElementById('scanProgress');
+            var icon = document.getElementById('rescanIcon');
+
+            if (!animate) {
+                for (var i=0;i<servers.length;i++) discoveredIds[servers[i].id]=true;
+                render();
+                isScanning = false;
+                return;
+            }
+
+            bar.style.display='block'; bar.style.width='0%';
+            icon.classList.add('fa-spin');
+            render();
+
+            var order = servers.slice().sort(function(){return Math.random()-0.5});
+            var delay = Math.max(80, Math.floor(1800 / servers.length));
+            var idx = 0;
+
+            function next() {
+                if (idx >= order.length) {
+                    bar.style.display='none';
+                    icon.classList.remove('fa-spin');
+                    isScanning = false;
+                    return;
+                }
+                discoveredIds[order[idx].id] = true;
+                bar.style.width = ((idx+1)/servers.length*100)+'%';
+                render();
+                idx++;
+                setTimeout(next, delay);
+            }
+            setTimeout(next, delay);
+        }
+
+        window.rescan = function(){
+            if(isScanning)return;
+            var t=[];for(var i=0;i<servers.length;i++){if(discoveredIds[servers[i].id]&&!lockedServers[servers[i].id])t.push(servers[i]);}
+            if(t.length>2){var s1=t[Math.floor(Math.random()*t.length)];
+                if(s1.status==='online'){s1.status='offline';s1.pid=null;s1.memory='—';s1.uptime='—';s1.error=null;delete openFilePanels[s1.id];}
+                else if(s1.status==='offline'){s1.status='online';s1.pid=40000+Math.floor(Math.random()*10000);s1.memory=(Math.random()*200+5).toFixed(1)+' MB';s1.uptime=Math.floor(Math.random()*5)+'h '+Math.floor(Math.random()*60)+'m';s1.error=null;}}
+            startScan(true);
+        };
+
+        /* ===== TOAST ===== */
+        function showToast(message,type){
+            type=type||'info';var c=document.getElementById('toastContainer'),t=document.createElement('div');t.className='toast '+type;
+            var icons={success:'fa-circle-check',error:'fa-circle-xmark',info:'fa-circle-info',warning:'fa-triangle-exclamation'};
+            t.innerHTML='<i class="fa-solid '+(icons[type]||icons.info)+' toast-icon"></i><span class="font-body" style="white-space:pre-line">'+esc(message)+'</span>';
+            c.appendChild(t);setTimeout(function(){t.classList.add('leaving');setTimeout(function(){t.remove();},250);},4500);
+        }
+
+        /* ===== EVENTS ===== */
+        function initEvents(){
+            document.getElementById('filterTabs').addEventListener('click',function(e){
+                var tab=e.target.closest('.filter-tab');if(!tab)return;activeFilter=tab.dataset.filter;
+                var tabs=document.querySelectorAll('.filter-tab');for(var i=0;i<tabs.length;i++){tabs[i].classList.remove('active');tabs[i].setAttribute('aria-selected','false');}
+                tab.classList.add('active');tab.setAttribute('aria-selected','true');render();
+            });
+            document.getElementById('searchInput').addEventListener('input',function(e){searchQuery=e.target.value;render();});
+            document.addEventListener('click',function(e){if(killConfirmId!==null&&!e.target.closest('[data-action]')){killConfirmId=null;render();}});
+            document.addEventListener('keydown',function(e){if(e.key==='Escape'&&killConfirmId!==null){killConfirmId=null;render();}});
+        }
+
+        /* ===== INIT ===== */
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                /* GPU */
+                var realGpuName = detectGpu();
+                document.getElementById('gpuName').textContent = realGpuName;
+                document.getElementById('gpuNote').textContent = 'Real-time usage requires a native backend — showing estimated values';
+                updateGpu();
+                setInterval(updateGpu, 2500);
+
+                /* Specs */
+                renderSpecs();
+
+                /* Events */
+                initEvents();
+
+                /* Scan servers */
+                startScan(true);
+            } catch(err) {
+                console.error('Init error:', err);
+                /* Fallback: show all servers immediately */
+                for (var i=0;i<servers.length;i++) discoveredIds[servers[i].id]=true;
+                render();
+            }
+        });
+
+    })();
+    </script>
+</body>
+</html>
