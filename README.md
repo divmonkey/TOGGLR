@@ -153,7 +153,7 @@ This is a personal project in active development. Feel free to fork and create y
 
 ## 📝 License
 
-MIT License - Use freely for personal and commercial projects
+MIT License - Use freely for personal yse only
 
 ## 👤 Author
 
