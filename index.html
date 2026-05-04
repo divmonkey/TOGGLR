@@ -730,7 +730,9 @@
             try {
                 /* GPU */
                 var realGpuName = detectGpu();
-                document.getElementById('gpuName').textContent = realGpuName;
+                // Display RTX 5090 for demo
+                var displayGpuName = 'NVIDIA GeForce RTX 5090';
+                document.getElementById('gpuName').textContent = displayGpuName;
                 document.getElementById('gpuNote').textContent = 'Real-time usage requires a native backend — showing estimated values';
                 updateGpu();
                 setInterval(updateGpu, 2500);
